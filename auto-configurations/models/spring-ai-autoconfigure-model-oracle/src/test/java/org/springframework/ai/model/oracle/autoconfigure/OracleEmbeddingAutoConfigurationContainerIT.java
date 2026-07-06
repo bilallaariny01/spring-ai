@@ -29,6 +29,8 @@ import java.util.Map;
 
 import javax.sql.DataSource;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import oracle.jdbc.OracleConnection;
 import oracle.jdbc.OracleTypes;
 import org.junit.jupiter.api.Assertions;
@@ -42,7 +44,6 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingOptions;
 import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.EmbeddingResponse;
-import org.springframework.ai.model.ModelOptionsUtils;
 import org.springframework.ai.oracle.chunking.OracleChunk;
 import org.springframework.ai.oracle.embedding.OracleEmbeddingModel;
 import org.springframework.ai.oracle.embedding.OracleEmbeddingPreferences;
@@ -61,6 +62,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @EnabledIfEnvironmentVariable(named = "ORACLE_AUTOCONFIG_IT", matches = "(?i:true|1|yes)")
 class OracleEmbeddingAutoConfigurationContainerIT {
+
+	private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
 	private static final String UTL_TO_EMBEDDINGS_SQL = "select dbms_vector_chain.utl_to_embeddings(?, ?) as vectors"
 			+ "\nfrom dual";
@@ -384,7 +387,12 @@ class OracleEmbeddingAutoConfigurationContainerIT {
 		Clob[] payload = new Clob[inputs.size()];
 		for (int i = 0; i < inputs.size(); i++) {
 			Clob clob = connection.createClob();
-			clob.setString(1, ModelOptionsUtils.JSON_MAPPER.writeValueAsString(new OracleChunk(i, inputs.get(i))));
+			try {
+				clob.setString(1, OBJECT_MAPPER.writeValueAsString(new OracleChunk(i, inputs.get(i))));
+			}
+			catch (JsonProcessingException ex) {
+				throw new SQLException("Failed to serialize Oracle vector payload", ex);
+			}
 			payload[i] = clob;
 		}
 		return oracleConnection.createOracleArray("SYS.VECTOR_ARRAY_T", payload);

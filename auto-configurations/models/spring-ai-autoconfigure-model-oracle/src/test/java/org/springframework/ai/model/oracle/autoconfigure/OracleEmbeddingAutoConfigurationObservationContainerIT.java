@@ -28,6 +28,8 @@ import java.util.List;
 
 import javax.sql.DataSource;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.observation.tck.TestObservationRegistry;
 import io.micrometer.observation.tck.TestObservationRegistryAssert;
 import oracle.jdbc.OracleConnection;
@@ -43,7 +45,6 @@ import org.springframework.ai.embedding.EmbeddingRequest;
 import org.springframework.ai.embedding.observation.DefaultEmbeddingModelObservationConvention;
 import org.springframework.ai.embedding.observation.EmbeddingModelObservationDocumentation.HighCardinalityKeyNames;
 import org.springframework.ai.embedding.observation.EmbeddingModelObservationDocumentation.LowCardinalityKeyNames;
-import org.springframework.ai.model.ModelOptionsUtils;
 import org.springframework.ai.observation.conventions.AiOperationType;
 import org.springframework.ai.oracle.chunking.OracleChunk;
 import org.springframework.ai.oracle.embedding.OracleEmbeddingModel;
@@ -62,6 +63,8 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
  */
 @EnabledIfEnvironmentVariable(named = "ORACLE_AUTOCONFIG_IT", matches = "(?i:true|1|yes)")
 class OracleEmbeddingAutoConfigurationObservationContainerIT {
+
+	private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
 	private static final String UTL_TO_EMBEDDINGS_SQL = "select dbms_vector_chain.utl_to_embeddings(?, ?) as vectors"
 			+ "\nfrom dual";
@@ -247,7 +250,12 @@ class OracleEmbeddingAutoConfigurationObservationContainerIT {
 		Clob[] payload = new Clob[inputs.size()];
 		for (int i = 0; i < inputs.size(); i++) {
 			Clob clob = connection.createClob();
-			clob.setString(1, ModelOptionsUtils.JSON_MAPPER.writeValueAsString(new OracleChunk(i, inputs.get(i))));
+			try {
+				clob.setString(1, OBJECT_MAPPER.writeValueAsString(new OracleChunk(i, inputs.get(i))));
+			}
+			catch (JsonProcessingException ex) {
+				throw new SQLException("Failed to serialize Oracle vector payload", ex);
+			}
 			payload[i] = clob;
 		}
 		return oracleConnection.createOracleArray("SYS.VECTOR_ARRAY_T", payload);
