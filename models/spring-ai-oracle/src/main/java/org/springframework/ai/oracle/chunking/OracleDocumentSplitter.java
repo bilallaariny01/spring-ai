@@ -16,17 +16,20 @@
 
 package org.springframework.ai.oracle.chunking;
 
+import java.sql.Clob;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 import javax.sql.DataSource;
 
 import oracle.jdbc.OracleTypes;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.ai.transformer.splitter.TextSplitter;
 import org.springframework.util.Assert;
@@ -39,7 +42,8 @@ import org.springframework.util.Assert;
 public class OracleDocumentSplitter extends TextSplitter {
 
 	private static final String CHUNKING_SQL = "select json_value(t.column_value, '$.chunk_data' returning clob) "
-			+ "as chunk_data from dbms_vector_chain.utl_to_chunks(?, ?) t";
+			+ "as chunk_data from dbms_vector_chain.utl_to_chunks(?, ?) t "
+			+ "order by json_value(t.column_value, '$.chunk_id' returning number)";
 
 	private final DataSource dataSource;
 
@@ -110,22 +114,28 @@ public class OracleDocumentSplitter extends TextSplitter {
 
 		try (Connection connection = this.dataSource.getConnection();
 				PreparedStatement statement = connection.prepareStatement(CHUNKING_SQL)) {
+			Clob input = connection.createClob();
+			try {
+				input.setString(1, text);
+				statement.setClob(1, input);
+				if (this.preferencesOson == null) {
+					statement.setNull(2, OracleTypes.JSON);
+				}
+				else {
+					statement.setObject(2, this.preferencesOson, OracleTypes.JSON);
+				}
 
-			statement.setString(1, text);
-			if (this.preferencesOson == null) {
-				statement.setNull(2, OracleTypes.JSON);
-			}
-			else {
-				statement.setObject(2, this.preferencesOson, OracleTypes.JSON);
-			}
-
-			try (ResultSet resultSet = statement.executeQuery()) {
-				while (resultSet.next()) {
-					String chunkData = resultSet.getString("chunk_data");
-					if (chunkData != null) {
-						chunks.add(chunkData);
+				try (ResultSet resultSet = statement.executeQuery()) {
+					while (resultSet.next()) {
+						String chunkData = resultSet.getString("chunk_data");
+						if (chunkData != null) {
+							chunks.add(chunkData);
+						}
 					}
 				}
+			}
+			finally {
+				input.free();
 			}
 		}
 		catch (SQLException ex) {
@@ -141,7 +151,7 @@ public class OracleDocumentSplitter extends TextSplitter {
 			.by("words")
 			.build();
 
-		private DataSource dataSource;
+		private @Nullable DataSource dataSource;
 
 		private OracleChunkingPreferences preferences = DEFAULT_PREFERENCES;
 
@@ -179,7 +189,8 @@ public class OracleDocumentSplitter extends TextSplitter {
 		 */
 		public OracleDocumentSplitter build() {
 			Assert.notNull(this.dataSource, "dataSource must not be null");
-			return new OracleDocumentSplitter(this.dataSource, this.preferences.toByteArray());
+			DataSource configuredDataSource = Objects.requireNonNull(this.dataSource);
+			return new OracleDocumentSplitter(configuredDataSource, this.preferences.toByteArray());
 		}
 
 	}

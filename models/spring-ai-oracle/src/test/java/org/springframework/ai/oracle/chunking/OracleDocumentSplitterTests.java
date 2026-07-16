@@ -25,7 +25,11 @@ import java.util.List;
 
 import javax.sql.DataSource;
 
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import oracle.jdbc.OracleTypes;
+import oracle.jdbc.provider.oson.OsonFactory;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.ai.document.Document;
@@ -47,6 +51,28 @@ import static org.mockito.Mockito.when;
  * @author Spring AI Contributors
  */
 class OracleDocumentSplitterTests {
+
+	/**
+	 * Verify numeric chunk limits are encoded as strings required by Oracle's chunk
+	 * parameter schema.
+	 */
+	@Test
+	void preferencesSerializeMaxAndOverlapAsOsonStrings() throws Exception {
+		OracleChunkingPreferences preferences = OracleChunkingPreferences.builder()
+			.by("words")
+			.max(100)
+			.overlap(10)
+			.build();
+
+		try (JsonParser parser = new OsonFactory().createParser(preferences.toByteArray())) {
+			JsonNode json = new JsonMapper().readTree(parser);
+
+			assertThat(json.path("max").isTextual()).isTrue();
+			assertThat(json.path("max").textValue()).isEqualTo("100");
+			assertThat(json.path("overlap").isTextual()).isTrue();
+			assertThat(json.path("overlap").textValue()).isEqualTo("10");
+		}
+	}
 
 	/**
 	 * Verify OSON preferences are bound when builder options are provided.
@@ -82,6 +108,9 @@ class OracleDocumentSplitterTests {
 
 		assertThat(chunks).hasSize(1);
 		assertThat(chunks.get(0).getText()).isEqualTo("chunk-1");
+		verify(clob).setString(1, "sample text");
+		verify(statement).setClob(1, clob);
+		verify(clob).free();
 		verify(statement).setObject(eq(2), argThat(value -> value instanceof byte[] && ((byte[]) value).length > 0),
 				eq(OracleTypes.JSON));
 		verify(statement, never()).setNull(2, OracleTypes.JSON);

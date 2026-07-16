@@ -23,16 +23,16 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.SQLRecoverableException;
 import java.sql.SQLTransientException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
 import javax.sql.DataSource;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import io.micrometer.observation.ObservationRegistry;
 import oracle.jdbc.OracleConnection;
 import oracle.jdbc.OracleType;
@@ -73,10 +73,11 @@ public final class OracleEmbeddingModel extends AbstractEmbeddingModel implement
 
 	private static final EmbeddingModelObservationConvention DEFAULT_OBSERVATION_CONVENTION = new DefaultEmbeddingModelObservationConvention();
 
-	private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+	private static final JsonMapper OBJECT_MAPPER = new JsonMapper();
 
 	private static final String EMBEDDING_SQL = "select to_vector(json_value(t.column_value, '$.embed_vector' returning clob)) "
-			+ "as vector from dbms_vector_chain.utl_to_embeddings(?, ?) t";
+			+ "as vector from dbms_vector_chain.utl_to_embeddings(?, ?) t "
+			+ "order by json_value(t.column_value, '$.embed_id' returning number)";
 
 	private static final String SINGLE_EMBEDDING_SQL = "select dbms_vector_chain.utl_to_embedding(?, ?) as vector "
 			+ "from dual";
@@ -214,6 +215,15 @@ public final class OracleEmbeddingModel extends AbstractEmbeddingModel implement
 		Assert.notNull(dataSource, "dataSource must not be null");
 		OracleEmbeddingOptions options = (defaultOptions != null) ? defaultOptions
 				: OracleEmbeddingOptions.builder().build();
+		if (initializeOnStartup && !options.isPreferencesSet()) {
+			@Nullable String modelName = StringUtils.hasText(onnxModelName) ? onnxModelName : options.getModel();
+			if (StringUtils.hasText(modelName)) {
+				options.setPreferences(OracleEmbeddingPreferences.builder()
+					.provider("database")
+					.model(Objects.requireNonNull(modelName))
+					.build());
+			}
+		}
 		Assert.notNull(options.getModel(), "model must not be null");
 		Assert.notNull(options.getPreferences(), "preferences must not be null");
 		Assert.notNull(options.getMetadataMode(), "metadataMode must not be null");
@@ -351,11 +361,15 @@ public final class OracleEmbeddingModel extends AbstractEmbeddingModel implement
 			.observation(this.observationConvention, DEFAULT_OBSERVATION_CONVENTION, () -> observationContext,
 					this.observationRegistry)
 			.observe(() -> {
-				List<Embedding> data = new ArrayList<>();
 				List<String> texts = requestToUse.getInstructions();
-				if (!CollectionUtils.isEmpty(texts)) {
+				List<Embedding> data;
+				if (CollectionUtils.isEmpty(texts)) {
+					data = new ArrayList<>();
+				}
+				else {
 					try {
-						RetryUtils.execute(this.retryTemplate, () -> {
+						data = RetryUtils.execute(this.retryTemplate, () -> {
+							List<Embedding> attemptData = new ArrayList<>();
 							try (Connection connection = this.dataSource.getConnection()) {
 								maybeSetProxy(connection, optionsToUse.getProxy());
 
@@ -365,14 +379,16 @@ public final class OracleEmbeddingModel extends AbstractEmbeddingModel implement
 								if (!batching) {
 									for (String input : texts) {
 										float[] vector = embedSingleText(connection, input, preferences);
-										data.add(new Embedding(vector, data.size()));
+										attemptData.add(new Embedding(vector, attemptData.size()));
 									}
 								}
 								else {
-									Array array = createVectorArrayPayload(connection, texts);
-									embedWithPayload(connection, array, preferences, data);
+									try (VectorArrayPayload payload = createVectorArrayPayload(connection, texts)) {
+										embedWithPayload(connection, payload.getArray(), preferences, texts.size(),
+												attemptData);
+									}
 								}
-								return Boolean.TRUE;
+								return attemptData;
 							}
 							catch (SQLException | IOException ex) {
 								throw toAiException("Failed to generate Oracle embeddings", ex);
@@ -406,7 +422,6 @@ public final class OracleEmbeddingModel extends AbstractEmbeddingModel implement
 			return this.defaultOptions;
 		}
 
-		OracleEmbeddingOptions baselineOptions = OracleEmbeddingOptions.builder().build();
 		OracleEmbeddingOptions.Builder builder = OracleEmbeddingOptions.builder()
 			.model(this.defaultOptions.getModel())
 			.dimensions(this.defaultOptions.getDimensions())
@@ -417,16 +432,13 @@ public final class OracleEmbeddingModel extends AbstractEmbeddingModel implement
 
 		if (requestOptions instanceof OracleEmbeddingOptions) {
 			OracleEmbeddingOptions oracleOptions = (OracleEmbeddingOptions) requestOptions;
-			String requestModel = Objects.equals(oracleOptions.getModel(), baselineOptions.getModel()) ? null
-					: oracleOptions.getModel();
+			String requestModel = oracleOptions.isModelSet() ? oracleOptions.getModel() : null;
 			Integer requestDimensions = oracleOptions.getDimensions();
-			byte[] requestPreferences = Arrays.equals(oracleOptions.getPreferences(), baselineOptions.getPreferences())
-					? null : oracleOptions.getPreferences();
+			byte[] requestPreferences = oracleOptions.isPreferencesSet() ? oracleOptions.getPreferences() : null;
 			String requestProxy = oracleOptions.getProxy();
-			Boolean requestBatching = (oracleOptions.isBatching() == baselineOptions.isBatching()) ? null
-					: oracleOptions.isBatching();
-			MetadataMode requestMetadataMode = (oracleOptions.getMetadataMode() == baselineOptions.getMetadataMode())
-					? null : oracleOptions.getMetadataMode();
+			Boolean requestBatching = oracleOptions.isBatchingSet() ? oracleOptions.isBatching() : null;
+			MetadataMode requestMetadataMode = oracleOptions.isMetadataModeSet() ? oracleOptions.getMetadataMode()
+					: null;
 
 			builder.model(ModelOptionsUtils.mergeOption(requestModel, this.defaultOptions.getModel()))
 				.dimensions(ModelOptionsUtils.mergeOption(requestDimensions, this.defaultOptions.getDimensions()))
@@ -556,11 +568,13 @@ public final class OracleEmbeddingModel extends AbstractEmbeddingModel implement
 	 * @param connection active JDBC connection
 	 * @param payload Oracle vector payload input
 	 * @param preferencesOson Oracle JSON preferences bytes
+	 * @param expectedCount number of embeddings expected from Oracle
 	 * @param output target list where embeddings are appended
 	 * @throws SQLException if Oracle embedding execution fails
 	 */
-	private void embedWithPayload(Connection connection, Object payload, byte[] preferencesOson, List<Embedding> output)
-			throws SQLException {
+	private void embedWithPayload(Connection connection, Object payload, byte[] preferencesOson, int expectedCount,
+			List<Embedding> output) throws SQLException {
+		int initialSize = output.size();
 
 		try (PreparedStatement statement = connection.prepareStatement(EMBEDDING_SQL)) {
 
@@ -579,6 +593,12 @@ public final class OracleEmbeddingModel extends AbstractEmbeddingModel implement
 				}
 			}
 		}
+
+		int actualCount = output.size() - initialSize;
+		if (actualCount != expectedCount) {
+			throw new IllegalStateException("Oracle embedding response count mismatch: expected " + expectedCount
+					+ " but received " + actualCount);
+		}
 	}
 
 	/**
@@ -592,16 +612,21 @@ public final class OracleEmbeddingModel extends AbstractEmbeddingModel implement
 	private float[] embedSingleText(Connection connection, String text, byte[] preferencesOson) throws SQLException {
 		try (PreparedStatement statement = connection.prepareStatement(SINGLE_EMBEDDING_SQL)) {
 			Clob clob = connection.createClob();
-			clob.setString(1, text);
-			statement.setObject(1, clob);
-			statement.setObject(2, preferencesOson, OracleTypes.JSON);
+			try {
+				clob.setString(1, text);
+				statement.setObject(1, clob);
+				statement.setObject(2, preferencesOson, OracleTypes.JSON);
 
-			try (ResultSet resultSet = statement.executeQuery()) {
-				if (!resultSet.next()) {
-					throw new IllegalStateException("Oracle embedding response must not be empty");
+				try (ResultSet resultSet = statement.executeQuery()) {
+					if (!resultSet.next()) {
+						throw new IllegalStateException("Oracle embedding response must not be empty");
+					}
+					VECTOR vectorObj = resultSet.getObject("vector", VECTOR.class);
+					return vectorObj.toFloatArray();
 				}
-				VECTOR vectorObj = resultSet.getObject("vector", VECTOR.class);
-				return vectorObj.toFloatArray();
+			}
+			finally {
+				clob.free();
 			}
 		}
 	}
@@ -610,20 +635,63 @@ public final class OracleEmbeddingModel extends AbstractEmbeddingModel implement
 	 * Convert input strings into the Oracle vector array payload format.
 	 * @param connection active JDBC connection
 	 * @param inputs texts to encode as Oracle chunks
-	 * @return Oracle array payload for {@code utl_to_embeddings}
+	 * @return Oracle array payload and its temporary CLOB resources
 	 * @throws SQLException if Oracle array creation fails
 	 * @throws IOException if chunk serialization fails
 	 */
-	private Array createVectorArrayPayload(Connection connection, List<String> inputs)
+	private VectorArrayPayload createVectorArrayPayload(Connection connection, List<String> inputs)
 			throws SQLException, IOException {
 		OracleConnection oracleConnection = connection.unwrap(OracleConnection.class);
 		Clob[] payload = new Clob[inputs.size()];
-		for (int i = 0; i < inputs.size(); i++) {
-			Clob clob = connection.createClob();
-			clob.setString(1, OBJECT_MAPPER.writeValueAsString(new OracleChunk(i, inputs.get(i))));
-			payload[i] = clob;
+		try {
+			for (int i = 0; i < inputs.size(); i++) {
+				Clob clob = connection.createClob();
+				payload[i] = clob;
+				clob.setString(1, OBJECT_MAPPER.writeValueAsString(new OracleChunk(i, inputs.get(i))));
+			}
+			Array array = oracleConnection.createOracleArray("SYS.VECTOR_ARRAY_T", payload);
+			return new VectorArrayPayload(array, payload);
 		}
-		return oracleConnection.createOracleArray("SYS.VECTOR_ARRAY_T", payload);
+		catch (SQLException | IOException ex) {
+			try {
+				freePayloadResources(null, payload);
+			}
+			catch (SQLException cleanupException) {
+				ex.addSuppressed(cleanupException);
+			}
+			throw ex;
+		}
+	}
+
+	private static void freePayloadResources(@Nullable Array array, Clob[] clobs) throws SQLException {
+		SQLException failure = null;
+		if (array != null) {
+			try {
+				array.free();
+			}
+			catch (SQLException ex) {
+				failure = ex;
+			}
+		}
+		for (Clob clob : clobs) {
+			if (clob == null) {
+				continue;
+			}
+			try {
+				clob.free();
+			}
+			catch (SQLException ex) {
+				if (failure == null) {
+					failure = ex;
+				}
+				else {
+					failure.addSuppressed(ex);
+				}
+			}
+		}
+		if (failure != null) {
+			throw failure;
+		}
 	}
 
 	/**
@@ -650,7 +718,7 @@ public final class OracleEmbeddingModel extends AbstractEmbeddingModel implement
 	 * @return mapped runtime exception
 	 */
 	private RuntimeException toAiException(String message, Exception ex) {
-		if (ex instanceof SQLTransientException) {
+		if (ex instanceof SQLTransientException || ex instanceof SQLRecoverableException) {
 			return new TransientAiException(message, ex);
 		}
 		return new NonTransientAiException(message, ex);
@@ -667,6 +735,28 @@ public final class OracleEmbeddingModel extends AbstractEmbeddingModel implement
 			throw new IllegalStateException(message);
 		}
 		return value;
+	}
+
+	private static final class VectorArrayPayload implements AutoCloseable {
+
+		private final Array array;
+
+		private final Clob[] clobs;
+
+		private VectorArrayPayload(Array array, Clob[] clobs) {
+			this.array = array;
+			this.clobs = clobs;
+		}
+
+		private Array getArray() {
+			return this.array;
+		}
+
+		@Override
+		public void close() throws SQLException {
+			freePayloadResources(this.array, this.clobs);
+		}
+
 	}
 
 	public static final class Builder {

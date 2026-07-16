@@ -28,7 +28,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import oracle.jdbc.OracleType;
 import oracle.jdbc.provider.oson.OsonFactory;
 import org.junit.jupiter.api.Assertions;
@@ -56,7 +56,7 @@ class OracleDocumentSplitterIT {
 
 	private static final OsonFactory OSON_FACTORY = new OsonFactory();
 
-	private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+	private static final JsonMapper OBJECT_MAPPER = new JsonMapper();
 
 	private static final OracleContainer oracleContainer = new OracleContainer(ORACLE_IMAGE_NAME)
 		.withStartupTimeout(Duration.ofMinutes(5))
@@ -89,6 +89,34 @@ class OracleDocumentSplitterIT {
 		List<Document> chunks = splitter.split(new Document(CONTENT));
 
 		assertThat(chunks.size()).isGreaterThan(1);
+	}
+
+	/**
+	 * Verify inputs larger than the Oracle VARCHAR2 limit are bound as CLOB values.
+	 */
+	@Test
+	@DisplayName("split input larger than VARCHAR2 limit")
+	void splitInputLargerThanVarcharLimit() {
+		assertUtlToChunksAvailable();
+		String sentinel = "END_OF_LARGE_DOCUMENT_7F3A9C";
+		String content = "Oracle vector chunking handles large documents. ".repeat(1500) + sentinel;
+		assertThat(content.length()).isGreaterThan(32767);
+		assertThat(content.indexOf(sentinel)).isGreaterThan(32767);
+		OracleDocumentSplitter splitter = OracleDocumentSplitter.builder(dataSource())
+			.preferences(OracleChunkingPreferences.builder()
+				.by("chars")
+				.max(4000)
+				.overlap(0)
+				.split("none")
+				.normalize("none")
+				.build())
+			.build();
+
+		List<Document> chunks = splitter.split(new Document(content));
+
+		assertThat(chunks).hasSizeGreaterThan(1);
+		assertThat(chunks).allSatisfy(chunk -> assertThat(chunk.getText()).isNotBlank());
+		assertThat(chunks).anySatisfy(chunk -> assertThat(chunk.getText()).contains(sentinel));
 	}
 
 	/**
@@ -167,13 +195,24 @@ class OracleDocumentSplitterIT {
 	@DisplayName("split string input with split and overlap preference")
 	void splitStringInputWithSplitAndOverlapPreference() {
 		assertUtlToChunksAvailable();
+		String content = "abcdefghijklmnopqrstuvwxyz".repeat(10);
 		OracleDocumentSplitter splitter = OracleDocumentSplitter.builder(dataSource())
-			.preferences(OracleChunkingPreferences.builder().by("words").max(50).split("sentence").build())
+			.preferences(OracleChunkingPreferences.builder()
+				.by("chars")
+				.max(50)
+				.overlap(10)
+				.split("none")
+				.normalize("none")
+				.build())
 			.build();
 
-		List<Document> chunks = splitter.split(new Document(CONTENT));
+		List<Document> chunks = splitter.split(new Document(content));
 
-		assertThat(chunks.size()).isGreaterThan(1);
+		assertThat(chunks).hasSizeGreaterThan(1);
+		String firstChunk = chunks.get(0).getText();
+		String secondChunk = chunks.get(1).getText();
+		assertThat(firstChunk).hasSize(50);
+		assertThat(secondChunk).startsWith(firstChunk.substring(firstChunk.length() - 10));
 	}
 
 	/**
@@ -240,7 +279,7 @@ class OracleDocumentSplitterIT {
 			Clob inputText = connection.createClob();
 			inputText.setString(1, "chunk probe text");
 			statement.setObject(1, inputText);
-			statement.setObject(2, toOsonBytes(Map.of("by", "words", "max", 50)), OracleType.JSON);
+			statement.setObject(2, toOsonBytes(Map.of("by", "words", "max", "50")), OracleType.JSON);
 			try (ResultSet ignored = statement.executeQuery()) {
 				return true;
 			}

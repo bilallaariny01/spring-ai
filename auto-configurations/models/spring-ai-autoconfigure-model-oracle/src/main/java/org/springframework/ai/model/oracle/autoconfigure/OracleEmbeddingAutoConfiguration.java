@@ -16,6 +16,8 @@
 
 package org.springframework.ai.model.oracle.autoconfigure;
 
+import java.util.Objects;
+
 import javax.sql.DataSource;
 
 import io.micrometer.observation.ObservationRegistry;
@@ -68,14 +70,19 @@ public class OracleEmbeddingAutoConfiguration {
 
 	private static void applyPreferences(OracleEmbeddingProperties properties) {
 		OracleEmbeddingPreferencesProperties preferenceProperties = properties.getPreferences();
-		if (!preferenceProperties.isConfigured()) {
+		String onnxModelName = properties.getOnnxModelName();
+		boolean useOnnxModel = properties.isInitializeOnStartup() && StringUtils.hasText(onnxModelName);
+		if (!preferenceProperties.isConfigured() && !useOnnxModel) {
 			return;
 		}
 
+		String model = StringUtils.hasText(preferenceProperties.getModel())
+				? Objects.requireNonNull(preferenceProperties.getModel())
+				: (useOnnxModel ? Objects.requireNonNull(onnxModelName) : "database");
 		OracleEmbeddingPreferences.Builder builder = OracleEmbeddingPreferences.builder()
 			.provider(StringUtils.hasText(preferenceProperties.getProvider()) ? preferenceProperties.getProvider()
 					: "database")
-			.model(StringUtils.hasText(preferenceProperties.getModel()) ? preferenceProperties.getModel() : "database");
+			.model(model);
 
 		if (StringUtils.hasText(preferenceProperties.getCredentialName())) {
 			builder.credentialName(preferenceProperties.getCredentialName());

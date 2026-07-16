@@ -94,6 +94,38 @@ public class OracleEmbeddingModelTests {
 	}
 
 	/**
+	 * Verify startup initialization uses the loaded ONNX model when embedding preferences
+	 * were not explicitly configured.
+	 */
+	@Test
+	void constructorUsesOnnxModelForDefaultPreferences() {
+		DataSource dataSource = new NoOpDataSource();
+		OracleEmbeddingModel model = new OracleEmbeddingModel(dataSource, OracleEmbeddingOptions.builder().build(),
+				null, null, true, "MODEL_DIR", "model.onnx", "MY_MODEL");
+
+		assertThat(model.getOptions().getPreferences()).containsExactly(
+				OracleEmbeddingPreferences.builder().provider("database").model("MY_MODEL").build().toByteArray());
+	}
+
+	/**
+	 * Verify explicit embedding preferences take priority over the startup ONNX model
+	 * name.
+	 */
+	@Test
+	void constructorPreservesExplicitPreferencesWhenOnnxModelIsConfigured() {
+		DataSource dataSource = new NoOpDataSource();
+		OracleEmbeddingPreferences preferences = OracleEmbeddingPreferences.builder()
+			.provider("database")
+			.model("EXPLICIT_MODEL")
+			.build();
+		OracleEmbeddingModel model = new OracleEmbeddingModel(dataSource,
+				OracleEmbeddingOptions.builder().preferences(preferences).build(), null, null, true, "MODEL_DIR",
+				"model.onnx", "MY_MODEL");
+
+		assertThat(model.getOptions().getPreferences()).containsExactly(preferences.toByteArray());
+	}
+
+	/**
 	 * Verify initialization no-ops when startup loading is disabled.
 	 */
 	@Test

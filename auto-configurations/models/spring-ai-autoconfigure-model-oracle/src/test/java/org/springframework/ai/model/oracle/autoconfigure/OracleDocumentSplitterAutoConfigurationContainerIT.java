@@ -36,12 +36,11 @@ import oracle.jdbc.provider.oson.OsonFactory;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.springframework.ai.oracle.chunking.OracleDocumentSplitter;
 import org.testcontainers.oracle.OracleContainer;
 import org.testcontainers.utility.DockerImageName;
 
 import org.springframework.ai.document.Document;
-
+import org.springframework.ai.oracle.chunking.OracleDocumentSplitter;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;

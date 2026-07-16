@@ -16,6 +16,8 @@
 
 package org.springframework.ai.model.oracle.autoconfigure;
 
+import java.util.Objects;
+
 import javax.sql.DataSource;
 
 import org.springframework.ai.model.SpringAIModelProperties;
@@ -28,7 +30,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import org.springframework.core.io.DefaultResourceLoader;
+import org.springframework.core.io.ResourceLoader;
 import org.springframework.util.StringUtils;
 
 /**
@@ -43,18 +45,22 @@ import org.springframework.util.StringUtils;
 @ConditionalOnClass({ OracleDocumentReader.class, DataSource.class })
 public class OracleDocumentLoaderAutoConfiguration {
 
+	public OracleDocumentLoaderAutoConfiguration(OracleDocumentLoaderProperties properties) {
+		validateSourceConfiguration(properties);
+	}
+
 	@Bean
 	@ConditionalOnMissingBean
 	@ConditionalOnProperty(prefix = OracleDocumentLoaderProperties.CONFIG_PREFIX, name = "resource")
 	public OracleDocumentReader oracleResourceDocumentLoader(DataSource dataSource,
-			OracleDocumentLoaderProperties properties) {
+			OracleDocumentLoaderProperties properties, ResourceLoader resourceLoader) {
 		String resource = properties.getResource();
 		if (resource == null) {
 			throw new IllegalArgumentException(
 					OracleDocumentLoaderProperties.CONFIG_PREFIX + ".resource must not be null");
 		}
 		OracleDocumentReader.Builder builder = OracleDocumentReader.builder(dataSource,
-				new DefaultResourceLoader().getResource(resource));
+				resourceLoader.getResource(resource));
 		applyPreferences(builder, properties.getPreferences());
 		return builder.build();
 	}
@@ -66,8 +72,10 @@ public class OracleDocumentLoaderAutoConfiguration {
 	public OracleDocumentReader oracleTableDocumentLoader(DataSource dataSource,
 			OracleDocumentLoaderProperties properties) {
 		OracleDocumentLoaderTableProperties tableProperties = properties.getTable();
-		OracleDocumentReader.Builder builder = OracleDocumentReader.builder(dataSource, tableProperties.getOwner(),
-				tableProperties.getTableName(), tableProperties.getColumnName());
+		String owner = Objects.requireNonNull(tableProperties.getOwner());
+		String tableName = Objects.requireNonNull(tableProperties.getTableName());
+		String columnName = Objects.requireNonNull(tableProperties.getColumnName());
+		OracleDocumentReader.Builder builder = OracleDocumentReader.builder(dataSource, owner, tableName, columnName);
 		applyPreferences(builder, properties.getPreferences());
 		return builder.build();
 	}
@@ -89,6 +97,28 @@ public class OracleDocumentLoaderAutoConfiguration {
 			preferencesBuilder.format(preferenceProperties.getFormat());
 		}
 		builder.preferences(preferencesBuilder.build());
+	}
+
+	private static void validateSourceConfiguration(OracleDocumentLoaderProperties properties) {
+		String resource = properties.getResource();
+		OracleDocumentLoaderTableProperties table = properties.getTable();
+		String owner = table.getOwner();
+		String tableName = table.getTableName();
+		String columnName = table.getColumnName();
+
+		boolean resourceConfigured = resource != null;
+		boolean tableConfigured = owner != null || tableName != null || columnName != null;
+		if (resourceConfigured && tableConfigured) {
+			throw new IllegalStateException(
+					"Configure only one Oracle document-loader source: either resource or table");
+		}
+		if (resourceConfigured && !StringUtils.hasText(resource)) {
+			throw new IllegalStateException("Oracle document-loader resource must not be blank");
+		}
+		if (tableConfigured && (!StringUtils.hasText(owner) || !StringUtils.hasText(tableName)
+				|| !StringUtils.hasText(columnName))) {
+			throw new IllegalStateException("Oracle document-loader table requires owner, table-name, and column-name");
+		}
 	}
 
 }

@@ -16,11 +16,23 @@
 
 package org.springframework.ai.oracle.embedding;
 
+import java.sql.Clob;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.SQLRecoverableException;
 import java.sql.SQLTransientException;
+import java.util.List;
 
+import javax.sql.DataSource;
+
+import oracle.sql.VECTOR;
 import org.junit.jupiter.api.Test;
 
+import org.springframework.ai.embedding.Embedding;
+import org.springframework.ai.embedding.EmbeddingRequest;
+import org.springframework.ai.embedding.EmbeddingResponse;
 import org.springframework.ai.retry.NonTransientAiException;
 import org.springframework.ai.retry.TransientAiException;
 import org.springframework.core.retry.RetryListener;
@@ -31,6 +43,11 @@ import org.springframework.jdbc.datasource.AbstractDataSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * Retry-specific tests for {@link OracleEmbeddingModel}.
@@ -67,6 +84,81 @@ class OracleEmbeddingModelRetryTests {
 		assertThatThrownBy(() -> model.embed("hello")).isInstanceOf(NonTransientAiException.class)
 			.hasMessage("Failed to generate Oracle embedding");
 		assertThat(retryListener.onErrorRetryCount).isZero();
+	}
+
+	/**
+	 * Verify a recoverable connection failure obtains a new connection and retries.
+	 */
+	@Test
+	void embedRecoverableConnectionFailureIsRetried() throws Exception {
+		TestRetryListener retryListener = new TestRetryListener();
+		RetryTemplate retryTemplate = shortRetryTemplate(retryListener);
+		DataSource dataSource = mock(DataSource.class);
+		Connection connection = mock(Connection.class);
+		PreparedStatement statement = mock(PreparedStatement.class);
+		Clob clob = mock(Clob.class);
+		ResultSet resultSet = embeddingResult(1.0f);
+
+		when(dataSource.getConnection()).thenThrow(new SQLRecoverableException("connection lost"))
+			.thenReturn(connection);
+		when(connection.prepareStatement(anyString())).thenReturn(statement);
+		when(connection.createClob()).thenReturn(clob);
+		when(statement.executeQuery()).thenReturn(resultSet);
+
+		OracleEmbeddingModel model = new OracleEmbeddingModel(dataSource, null, null, retryTemplate);
+
+		assertThat(model.embed("hello")).containsExactly(1.0f);
+		assertThat(retryListener.onErrorRetryCount).isEqualTo(1);
+		verify(dataSource, times(2)).getConnection();
+		verify(clob).free();
+	}
+
+	/**
+	 * Verify partial embeddings from a failed attempt are discarded before retrying.
+	 */
+	@Test
+	void partialResultsFromFailedAttemptAreDiscarded() throws Exception {
+		TestRetryListener retryListener = new TestRetryListener();
+		RetryTemplate retryTemplate = shortRetryTemplate(retryListener);
+		DataSource dataSource = mock(DataSource.class);
+		Connection connection = mock(Connection.class);
+		PreparedStatement firstAttemptFirstInput = mock(PreparedStatement.class);
+		PreparedStatement firstAttemptSecondInput = mock(PreparedStatement.class);
+		PreparedStatement retryFirstInput = mock(PreparedStatement.class);
+		PreparedStatement retrySecondInput = mock(PreparedStatement.class);
+		ResultSet firstAttemptResult = embeddingResult(99.0f);
+		ResultSet retryFirstResult = embeddingResult(1.0f);
+		ResultSet retrySecondResult = embeddingResult(2.0f);
+
+		when(dataSource.getConnection()).thenReturn(connection);
+		when(connection.prepareStatement(anyString())).thenReturn(firstAttemptFirstInput, firstAttemptSecondInput,
+				retryFirstInput, retrySecondInput);
+		when(connection.createClob()).thenReturn(mock(Clob.class), mock(Clob.class), mock(Clob.class),
+				mock(Clob.class));
+		when(firstAttemptFirstInput.executeQuery()).thenReturn(firstAttemptResult);
+		when(firstAttemptSecondInput.executeQuery()).thenThrow(new SQLTransientException("temporary db issue"));
+		when(retryFirstInput.executeQuery()).thenReturn(retryFirstResult);
+		when(retrySecondInput.executeQuery()).thenReturn(retrySecondResult);
+
+		OracleEmbeddingOptions options = OracleEmbeddingOptions.builder().batching(false).build();
+		OracleEmbeddingModel model = new OracleEmbeddingModel(dataSource, options, null, retryTemplate);
+
+		EmbeddingResponse response = model.call(new EmbeddingRequest(List.of("first", "second"), options));
+
+		assertThat(response.getResults()).hasSize(2);
+		assertThat(response.getResults()).extracting(Embedding::getIndex).containsExactly(0, 1);
+		assertThat(response.getResults().get(0).getOutput()).containsExactly(1.0f);
+		assertThat(response.getResults().get(1).getOutput()).containsExactly(2.0f);
+		assertThat(retryListener.onErrorRetryCount).isEqualTo(1);
+	}
+
+	private ResultSet embeddingResult(float value) throws SQLException {
+		ResultSet resultSet = mock(ResultSet.class);
+		VECTOR vector = mock(VECTOR.class);
+		when(resultSet.next()).thenReturn(true);
+		when(resultSet.getObject("vector", VECTOR.class)).thenReturn(vector);
+		when(vector.toFloatArray()).thenReturn(new float[] { value });
+		return resultSet;
 	}
 
 	/**

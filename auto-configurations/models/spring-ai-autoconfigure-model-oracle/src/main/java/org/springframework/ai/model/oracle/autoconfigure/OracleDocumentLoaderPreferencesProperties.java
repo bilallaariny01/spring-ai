@@ -27,10 +27,13 @@ import org.springframework.util.StringUtils;
  */
 public class OracleDocumentLoaderPreferencesProperties {
 
+	/** Whether conversion returns plain text rather than structured output. */
 	private @Nullable Boolean plaintext;
 
+	/** Character set used to decode the source document. */
 	private @Nullable String charset;
 
+	/** Source content format: {@code BINARY}, {@code TEXT}, or {@code IGNORE}. */
 	private @Nullable String format;
 
 	public @Nullable Boolean getPlaintext() {

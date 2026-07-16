@@ -170,6 +170,37 @@ public class OracleEmbeddingOptionsTests {
 	}
 
 	/**
+	 * Verify explicitly configured framework defaults override different model defaults.
+	 */
+	@Test
+	void mergeWithExplicitFrameworkDefaultsOverridesModelDefaults() {
+		DataSource dataSource = new NoOpDataSource();
+		OracleEmbeddingPreferences customPreferences = OracleEmbeddingPreferences.builder()
+			.provider("ocigenai")
+			.model("custom-model")
+			.build();
+		OracleEmbeddingModel model = new OracleEmbeddingModel(dataSource,
+				OracleEmbeddingOptions.builder()
+					.model("custom-model")
+					.preferences(customPreferences)
+					.batching(false)
+					.metadataMode(MetadataMode.ALL)
+					.build());
+
+		OracleEmbeddingOptions merged = model.mergeOptions(OracleEmbeddingOptions.builder()
+			.model("database")
+			.preferences(OracleEmbeddingOptions.DEFAULT_PREFERENCES)
+			.batching(true)
+			.metadataMode(MetadataMode.EMBED)
+			.build());
+
+		assertThat(merged.getModel()).isEqualTo("database");
+		assertThat(merged.getPreferences()).containsExactly(OracleEmbeddingOptions.DEFAULT_PREFERENCES.toByteArray());
+		assertThat(merged.isBatching()).isTrue();
+		assertThat(merged.getMetadataMode()).isEqualTo(MetadataMode.EMBED);
+	}
+
+	/**
 	 * Verify merging null request options returns defaults.
 	 */
 	@Test

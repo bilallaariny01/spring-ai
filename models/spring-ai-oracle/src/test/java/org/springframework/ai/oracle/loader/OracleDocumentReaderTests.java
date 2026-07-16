@@ -16,17 +16,24 @@
 
 package org.springframework.ai.oracle.loader;
 
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.InvalidParameterException;
+import java.sql.Blob;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.List;
 
 import javax.sql.DataSource;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import org.springframework.ai.document.Document;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.jdbc.datasource.AbstractDataSource;
@@ -35,6 +42,10 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for OracleDocumentReader constructor and non-container error paths.
@@ -312,6 +323,51 @@ class OracleDocumentReaderTests {
 		assertThatThrownBy(reader::get).isInstanceOf(IllegalStateException.class)
 			.hasMessageContaining("Failed to load documents using OracleDocumentReader")
 			.hasCause(sqlException);
+	}
+
+	/**
+	 * Verify stream-backed resources are read without requiring a filesystem path.
+	 */
+	@Test
+	void streamBackedResourceIsLoadedAndRetainsSourceMetadata() throws Exception {
+		byte[] content = "stream-backed content".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+		Resource resource = new ByteArrayResource(content, "stream resource") {
+			@Override
+			public String getFilename() {
+				return "stream.md";
+			}
+
+			@Override
+			public URI getURI() {
+				return URI.create("memory:/stream.md");
+			}
+		};
+		DataSource dataSource = mock(DataSource.class);
+		Connection connection = mock(Connection.class);
+		PreparedStatement statement = mock(PreparedStatement.class);
+		Blob blob = mock(Blob.class);
+		ResultSet resultSet = mock(ResultSet.class);
+
+		when(dataSource.getConnection()).thenReturn(connection);
+		when(connection.prepareStatement(anyString())).thenReturn(statement);
+		when(connection.createBlob()).thenReturn(blob);
+		when(statement.executeQuery()).thenReturn(resultSet);
+		when(resultSet.next()).thenReturn(true, false);
+		when(resultSet.getString("text")).thenReturn("converted content");
+		when(resultSet.getString("metadata"))
+			.thenReturn("<html><head><meta name=\"author\" content=\"Oracle\"></head></html>");
+
+		List<Document> documents = new OracleDocumentReader(dataSource, resource).get();
+
+		assertThat(documents).singleElement().satisfies(document -> {
+			assertThat(document.getText()).isEqualTo("converted content");
+			assertThat(document.getMetadata()).containsEntry("source", "memory:/stream.md")
+				.containsEntry("file_name", "stream.md")
+				.containsEntry("author", "Oracle")
+				.doesNotContainKey("absolute_directory_path");
+		});
+		verify(blob).setBytes(1, content);
+		verify(blob).free();
 	}
 
 	/**

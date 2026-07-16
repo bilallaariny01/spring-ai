@@ -283,14 +283,11 @@ class OracleDocumentLoaderAutoConfigurationContainerIT {
 			Assumptions.assumeTrue(isUtlToTextInvokable(connection), "DBMS_VECTOR_CHAIN.UTL_TO_TEXT is not available.");
 		}
 		catch (SQLException ex) {
-			Assumptions.assumeTrue(false, "Could not verify UTL_TO_TEXT availability: " + ex.getMessage());
-		}
-		catch (RuntimeException ex) {
-			Assumptions.assumeTrue(false, "Skipping IT: Docker/Oracle container unavailable - " + ex.getMessage());
+			Assertions.fail("Could not verify UTL_TO_TEXT availability.", ex);
 		}
 	}
 
-	private static boolean isUtlToTextInvokable(Connection connection) throws SQLException {
+	static boolean isUtlToTextInvokable(Connection connection) throws SQLException {
 		try (PreparedStatement statement = connection.prepareStatement(UTL_TO_TEXT_SQL)) {
 			Blob blob = connection.createBlob();
 			blob.setBytes(1, "probe".getBytes());

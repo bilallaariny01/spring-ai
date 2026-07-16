@@ -34,7 +34,7 @@ public class OracleChunk {
 
 	private @Nullable Integer length;
 
-	private String data;
+	private @Nullable String data;
 
 	/**
 	 * Create an empty chunk payload.
@@ -111,7 +111,7 @@ public class OracleChunk {
 	 * @return the chunk text
 	 */
 	@JsonProperty("chunk_data")
-	public String getData() {
+	public @Nullable String getData() {
 		return this.data;
 	}
 

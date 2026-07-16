@@ -30,24 +30,34 @@ import org.springframework.util.StringUtils;
  */
 public class OracleDocumentSplitterPreferencesProperties {
 
+	/** Unit used to measure chunk size, such as words, sentences, or vocabulary entries. */
 	private @Nullable String by;
 
+	/** Maximum size of each chunk, measured in the selected {@code by} unit. */
 	private @Nullable Integer max;
 
+	/** Number of units shared by consecutive chunks to preserve context. */
 	private @Nullable Integer overlap;
 
+	/** Boundary type used when splitting text into chunks. */
 	private @Nullable String split;
 
+	/** Custom delimiters used when {@code split} is {@code custom}. */
 	private @Nullable List<String> customList;
 
+	/** Oracle vocabulary name used when {@code by} is {@code vocabulary}. */
 	private @Nullable String vocabulary;
 
+	/** Language hint Oracle uses to identify suitable chunk boundaries. */
 	private @Nullable String language;
 
+	/** Text normalization mode applied before chunking. */
 	private @Nullable String normalize;
 
+	/** Normalization options used when {@code normalize} is {@code options}. */
 	private @Nullable List<String> normOptions;
 
+	/** Whether Oracle returns extended chunk metadata. */
 	private @Nullable Boolean extended;
 
 	public @Nullable String getBy() {

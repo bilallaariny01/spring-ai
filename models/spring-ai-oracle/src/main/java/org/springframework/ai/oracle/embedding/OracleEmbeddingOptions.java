@@ -36,15 +36,23 @@ public class OracleEmbeddingOptions implements EmbeddingOptions {
 
 	private @Nullable String model = "database";
 
+	private boolean modelSet;
+
 	private @Nullable Integer dimensions;
 
 	private byte[] preferences = defaultPreferencesOson();
+
+	private boolean preferencesSet;
 
 	private @Nullable String proxy;
 
 	private boolean batching = true;
 
+	private boolean batchingSet;
+
 	private MetadataMode metadataMode = MetadataMode.EMBED;
+
+	private boolean metadataModeSet;
 
 	/**
 	 * Create a builder for embedding options.
@@ -69,7 +77,12 @@ public class OracleEmbeddingOptions implements EmbeddingOptions {
 	 */
 	public void setModel(@Nullable String model) {
 		this.model = model;
+		this.modelSet = true;
 
+	}
+
+	boolean isModelSet() {
+		return this.modelSet;
 	}
 
 	/**
@@ -105,6 +118,7 @@ public class OracleEmbeddingOptions implements EmbeddingOptions {
 	public void setPreferences(byte[] preferences) {
 		Assert.notNull(preferences, "preferences must not be null");
 		this.preferences = preferences.clone();
+		this.preferencesSet = true;
 
 	}
 
@@ -115,7 +129,12 @@ public class OracleEmbeddingOptions implements EmbeddingOptions {
 	public void setPreferences(OracleEmbeddingPreferences preferences) {
 		Assert.notNull(preferences, "preferences must not be null");
 		this.preferences = preferences.toByteArray();
+		this.preferencesSet = true;
 
+	}
+
+	boolean isPreferencesSet() {
+		return this.preferencesSet;
 	}
 
 	/**
@@ -149,7 +168,12 @@ public class OracleEmbeddingOptions implements EmbeddingOptions {
 	 */
 	public void setBatching(boolean batching) {
 		this.batching = batching;
+		this.batchingSet = true;
 
+	}
+
+	boolean isBatchingSet() {
+		return this.batchingSet;
 	}
 
 	/**
@@ -166,7 +190,12 @@ public class OracleEmbeddingOptions implements EmbeddingOptions {
 	 */
 	public void setMetadataMode(MetadataMode metadataMode) {
 		this.metadataMode = metadataMode;
+		this.metadataModeSet = true;
 
+	}
+
+	boolean isMetadataModeSet() {
+		return this.metadataModeSet;
 	}
 
 	/**

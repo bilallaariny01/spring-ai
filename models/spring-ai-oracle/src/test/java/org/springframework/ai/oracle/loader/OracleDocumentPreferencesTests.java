@@ -16,6 +16,8 @@
 
 package org.springframework.ai.oracle.loader;
 
+import java.util.Locale;
+
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -87,6 +89,24 @@ class OracleDocumentPreferencesTests {
 		assertThatThrownBy(() -> OracleDocumentPreferences.builder().format("JSON").build())
 			.isInstanceOf(IllegalArgumentException.class)
 			.hasMessageContaining("format must be one of: BINARY, TEXT, IGNORE");
+	}
+
+	/**
+	 * Verify format normalization is independent of the JVM default locale.
+	 */
+	@Test
+	void normalizeFormatUsesLocaleIndependentCaseConversion() {
+		Locale previousLocale = Locale.getDefault();
+		try {
+			Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+
+			OracleDocumentPreferences preferences = OracleDocumentPreferences.builder().format("binary").build();
+
+			assertThat(preferences.getFormat()).isEqualTo("BINARY");
+		}
+		finally {
+			Locale.setDefault(previousLocale);
+		}
 	}
 
 }

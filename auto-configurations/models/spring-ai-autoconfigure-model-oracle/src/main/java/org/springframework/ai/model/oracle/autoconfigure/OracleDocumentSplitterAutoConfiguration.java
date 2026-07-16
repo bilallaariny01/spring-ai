@@ -20,7 +20,6 @@ import javax.sql.DataSource;
 
 import org.springframework.ai.model.SpringAIModelProperties;
 import org.springframework.ai.model.SpringAIModels;
-
 import org.springframework.ai.oracle.chunking.OracleChunkingPreferences;
 import org.springframework.ai.oracle.chunking.OracleDocumentSplitter;
 import org.springframework.boot.autoconfigure.AutoConfiguration;

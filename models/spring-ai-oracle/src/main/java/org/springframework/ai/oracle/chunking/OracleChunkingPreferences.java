@@ -23,7 +23,7 @@ import java.util.List;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import oracle.jdbc.provider.oson.OsonFactory;
 import org.jspecify.annotations.Nullable;
 
@@ -39,35 +39,47 @@ public final class OracleChunkingPreferences {
 
 	private static final OsonFactory OSON_FACTORY = new OsonFactory();
 
-	private static final ObjectMapper LC4J_MAPPER = new ObjectMapper();
+	private static final JsonMapper LC4J_MAPPER = new JsonMapper();
 
+	/**
+	 * Unit used to measure chunk size, such as words, sentences, or vocabulary entries.
+	 */
 	@JsonProperty("by")
 	private final @Nullable String by;
 
+	/** Maximum size of each chunk, measured in the selected {@code by} unit. */
 	@JsonProperty("max")
-	private final @Nullable Integer max;
+	private final @Nullable String max;
 
+	/** Number of units shared by consecutive chunks to preserve context. */
 	@JsonProperty("overlap")
-	private final @Nullable Integer overlap;
+	private final @Nullable String overlap;
 
+	/** Boundary type used when splitting text into chunks. */
 	@JsonProperty("split")
 	private final @Nullable String split;
 
+	/** Custom delimiters used when {@code split} is {@code custom}. */
 	@JsonProperty("custom_list")
 	private final @Nullable List<String> customList;
 
+	/** Oracle vocabulary name used when {@code by} is {@code vocabulary}. */
 	@JsonProperty("vocabulary")
 	private final @Nullable String vocabulary;
 
+	/** Language hint Oracle uses to identify suitable chunk boundaries. */
 	@JsonProperty("language")
 	private final @Nullable String language;
 
+	/** Text normalization mode applied before chunking. */
 	@JsonProperty("normalize")
 	private final @Nullable String normalize;
 
+	/** Normalization options used when {@code normalize} is {@code options}. */
 	@JsonProperty("norm_options")
 	private final @Nullable List<String> normOptions;
 
+	/** Whether Oracle returns extended chunk metadata. */
 	@JsonProperty("extended")
 	private final @Nullable Boolean extended;
 
@@ -77,8 +89,8 @@ public final class OracleChunkingPreferences {
 	 */
 	private OracleChunkingPreferences(Builder builder) {
 		this.by = builder.by;
-		this.max = builder.max;
-		this.overlap = builder.overlap;
+		this.max = (builder.max != null) ? builder.max.toString() : null;
+		this.overlap = (builder.overlap != null) ? builder.overlap.toString() : null;
 		this.split = builder.split;
 		this.customList = builder.customList;
 		this.vocabulary = builder.vocabulary;
@@ -116,24 +128,37 @@ public final class OracleChunkingPreferences {
 
 	public static final class Builder {
 
+		/**
+		 * Unit used to measure chunk size, such as words, sentences, or vocabulary
+		 * entries.
+		 */
 		private @Nullable String by;
 
+		/** Maximum size of each chunk, measured in the selected {@code by} unit. */
 		private @Nullable Integer max;
 
+		/** Number of units shared by consecutive chunks to preserve context. */
 		private @Nullable Integer overlap;
 
+		/** Boundary type used when splitting text into chunks. */
 		private @Nullable String split;
 
+		/** Custom delimiters used when {@code split} is {@code custom}. */
 		private @Nullable List<String> customList;
 
+		/** Oracle vocabulary name used when {@code by} is {@code vocabulary}. */
 		private @Nullable String vocabulary;
 
+		/** Language hint Oracle uses to identify suitable chunk boundaries. */
 		private @Nullable String language;
 
+		/** Text normalization mode applied before chunking. */
 		private @Nullable String normalize;
 
+		/** Normalization options used when {@code normalize} is {@code options}. */
 		private @Nullable List<String> normOptions;
 
+		/** Whether Oracle returns extended chunk metadata. */
 		private @Nullable Boolean extended;
 
 		/**

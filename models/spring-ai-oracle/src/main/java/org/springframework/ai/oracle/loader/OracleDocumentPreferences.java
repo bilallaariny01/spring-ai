@@ -18,11 +18,12 @@ package org.springframework.ai.oracle.loader;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.Locale;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import oracle.jdbc.provider.oson.OsonFactory;
 import org.jspecify.annotations.Nullable;
 
@@ -38,14 +39,17 @@ public final class OracleDocumentPreferences {
 
 	private static final OsonFactory OSON_FACTORY = new OsonFactory();
 
-	private static final ObjectMapper LC4J_MAPPER = new ObjectMapper();
+	private static final JsonMapper LC4J_MAPPER = new JsonMapper();
 
+	/** Whether conversion returns plain text rather than structured output. */
 	@JsonProperty("plaintext")
 	private final @Nullable String plaintext;
 
+	/** Character set used to decode the source document. */
 	@JsonProperty("charset")
 	private final @Nullable String charset;
 
+	/** Source content format: {@code BINARY}, {@code TEXT}, or {@code IGNORE}. */
 	@JsonProperty("format")
 	private final @Nullable String format;
 
@@ -126,7 +130,7 @@ public final class OracleDocumentPreferences {
 	 */
 	static String normalizeFormat(String format) {
 		Assert.hasText(format, "format must not be empty");
-		String normalized = format.toUpperCase();
+		String normalized = format.toUpperCase(Locale.ROOT);
 		Assert.isTrue("BINARY".equals(normalized) || "TEXT".equals(normalized) || "IGNORE".equals(normalized),
 				"format must be one of: BINARY, TEXT, IGNORE");
 		return normalized;
@@ -134,10 +138,13 @@ public final class OracleDocumentPreferences {
 
 	public static final class Builder {
 
+		/** Whether conversion returns plain text rather than structured output. */
 		private @Nullable Boolean plaintext;
 
+		/** Character set used to decode the source document. */
 		private @Nullable String charset;
 
+		/** Source content format: {@code BINARY}, {@code TEXT}, or {@code IGNORE}. */
 		private @Nullable String format;
 
 		/**

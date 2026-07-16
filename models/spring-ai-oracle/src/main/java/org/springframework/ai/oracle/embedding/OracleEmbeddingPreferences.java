@@ -22,7 +22,7 @@ import java.util.Objects;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import oracle.jdbc.provider.oson.OsonFactory;
 import org.jspecify.annotations.Nullable;
 
@@ -38,26 +38,33 @@ public final class OracleEmbeddingPreferences {
 
 	private static final OsonFactory OSON_FACTORY = new OsonFactory();
 
-	private static final ObjectMapper LC4J_MAPPER = new ObjectMapper();
+	private static final JsonMapper LC4J_MAPPER = new JsonMapper();
 
+	/** Embedding service provider Oracle invokes. */
 	@JsonProperty("provider")
 	private final String provider;
 
+	/** Provider-specific embedding model to use. */
 	@JsonProperty("model")
 	private final String model;
 
+	/** Name of the Oracle credential used to authenticate with the provider. */
 	@JsonProperty("credential_name")
-	private final String credentialName;
+	private final @Nullable String credentialName;
 
+	/** Provider endpoint URL, when the selected provider requires one. */
 	@JsonProperty("url")
 	private final @Nullable String url;
 
+	/** Maximum time Oracle waits for the provider transfer to complete. */
 	@JsonProperty("transfer_timeout")
 	private final @Nullable Integer transferTimeout;
 
+	/** Maximum number of input texts sent to the provider in one request. */
 	@JsonProperty("max_count")
 	private final @Nullable Integer maxCount;
 
+	/** Number of input texts Oracle groups into each embedding batch. */
 	@JsonProperty("batch_size")
 	private final @Nullable Integer batchSize;
 
@@ -71,8 +78,9 @@ public final class OracleEmbeddingPreferences {
 	 * @param maxCount maximum input count
 	 * @param batchSize batch size
 	 */
-	private OracleEmbeddingPreferences(String provider, String model, String credentialName, @Nullable String url,
-			@Nullable Integer transferTimeout, @Nullable Integer maxCount, @Nullable Integer batchSize) {
+	private OracleEmbeddingPreferences(String provider, String model, @Nullable String credentialName,
+			@Nullable String url, @Nullable Integer transferTimeout, @Nullable Integer maxCount,
+			@Nullable Integer batchSize) {
 		this.provider = provider;
 		this.model = model;
 		this.credentialName = credentialName;
@@ -110,7 +118,7 @@ public final class OracleEmbeddingPreferences {
 	 * Return optional Oracle credential name.
 	 * @return credential name
 	 */
-	public String getCredentialName() {
+	public @Nullable String getCredentialName() {
 		return this.credentialName;
 	}
 
@@ -166,18 +174,25 @@ public final class OracleEmbeddingPreferences {
 
 	public static final class Builder {
 
+		/** Embedding service provider Oracle invokes. */
 		private @Nullable String provider;
 
+		/** Provider-specific embedding model to use. */
 		private @Nullable String model;
 
-		private String credentialName;
+		/** Name of the Oracle credential used to authenticate with the provider. */
+		private @Nullable String credentialName;
 
+		/** Provider endpoint URL, when the selected provider requires one. */
 		private @Nullable String url;
 
+		/** Maximum time Oracle waits for the provider transfer to complete. */
 		private @Nullable Integer transferTimeout;
 
+		/** Maximum number of input texts sent to the provider in one request. */
 		private @Nullable Integer maxCount;
 
+		/** Number of input texts Oracle groups into each embedding batch. */
 		private @Nullable Integer batchSize;
 
 		/**

@@ -232,7 +232,30 @@ class OracleEmbeddingAutoConfigurationContainerIT {
 	}
 
 	@Test
-	void initializeOnStartupLoadsOnnxModel() {
+	void callHonorsExplicitDefaultBatchingRequestOption() {
+		assertUtlToEmbeddingsAvailable();
+		this.contextRunner
+			.withPropertyValues("spring.ai.model.embedding=oracle",
+					"spring.ai.oracle.embedding.options.model=" + ONNX_MODEL_NAME,
+					"spring.ai.oracle.embedding.options.batching=false",
+					"spring.ai.oracle.embedding.preferences.provider=database",
+					"spring.ai.oracle.embedding.preferences.model=" + ONNX_MODEL_NAME)
+			.run(context -> {
+				OracleEmbeddingModel model = context.getBean(OracleEmbeddingModel.class);
+				EmbeddingResponse response = model
+					.call(new EmbeddingRequest(List.of(EMBED_TEXT, EMBED_TEXT + " second"),
+							org.springframework.ai.oracle.embedding.OracleEmbeddingOptions.builder()
+								.batching(true)
+								.build()));
+				Boolean batching = response.getMetadata().get("batching");
+
+				assertThat(response.getResults()).hasSize(2);
+				assertThat(batching).isTrue();
+			});
+	}
+
+	@Test
+	void initializeOnStartupLoadsAndUsesOnnxModel() {
 		try (Connection connection = dataSource().getConnection()) {
 			ensureOnnxArtifactsPrepared(connection);
 			dropModelIfExists(connection, ONNX_MODEL_NAME);
@@ -255,6 +278,9 @@ class OracleEmbeddingAutoConfigurationContainerIT {
 				catch (SQLException ex) {
 					Assertions.fail("Could not verify loaded ONNX model", ex);
 				}
+
+				OracleEmbeddingModel model = context.getBean(OracleEmbeddingModel.class);
+				assertThat(model.embed(EMBED_TEXT)).isNotEmpty();
 			});
 	}
 

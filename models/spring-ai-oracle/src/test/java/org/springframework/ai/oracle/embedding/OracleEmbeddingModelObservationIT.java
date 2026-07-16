@@ -27,7 +27,7 @@ import java.sql.Statement;
 import java.time.Duration;
 import java.util.List;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import io.micrometer.observation.tck.TestObservationRegistry;
 import io.micrometer.observation.tck.TestObservationRegistryAssert;
 import oracle.jdbc.OracleConnection;
@@ -73,7 +73,7 @@ class OracleEmbeddingModelObservationIT {
 		.model(ONNX_MODEL_NAME)
 		.build();
 
-	private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+	private static final JsonMapper OBJECT_MAPPER = new JsonMapper();
 
 	private static volatile boolean onnxModelPrepared;
 

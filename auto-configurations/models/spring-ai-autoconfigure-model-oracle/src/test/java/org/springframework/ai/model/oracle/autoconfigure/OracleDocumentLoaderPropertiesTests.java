@@ -41,9 +41,6 @@ public class OracleDocumentLoaderPropertiesTests {
 		this.contextRunner.withPropertyValues(
 		// @formatter:off
 				"spring.ai.oracle.document-loader.resource=classpath:/docs",
-				"spring.ai.oracle.document-loader.table.owner=APP",
-				"spring.ai.oracle.document-loader.table.table-name=DOCS",
-				"spring.ai.oracle.document-loader.table.column-name=TEXT",
 				"spring.ai.oracle.document-loader.preferences.plaintext=true",
 				"spring.ai.oracle.document-loader.preferences.charset=UTF-8",
 				"spring.ai.oracle.document-loader.preferences.format=ignore")
@@ -53,12 +50,25 @@ public class OracleDocumentLoaderPropertiesTests {
 				OracleDocumentLoaderProperties properties = context.getBean(OracleDocumentLoaderProperties.class);
 
 				assertThat(properties.getResource()).isEqualTo("classpath:/docs");
-				assertThat(properties.getTable().getOwner()).isEqualTo("APP");
-				assertThat(properties.getTable().getTableName()).isEqualTo("DOCS");
-				assertThat(properties.getTable().getColumnName()).isEqualTo("TEXT");
 				assertThat(properties.getPreferences().getPlaintext()).isTrue();
 				assertThat(properties.getPreferences().getCharset()).isEqualTo("UTF-8");
 				assertThat(properties.getPreferences().getFormat()).isEqualTo("ignore");
+			});
+	}
+
+	@Test
+	public void tableProperties() {
+		this.contextRunner
+			.withPropertyValues("spring.ai.oracle.document-loader.table.owner=APP",
+					"spring.ai.oracle.document-loader.table.table-name=DOCS",
+					"spring.ai.oracle.document-loader.table.column-name=TEXT")
+			.withConfiguration(AutoConfigurations.of(OracleDocumentLoaderAutoConfiguration.class))
+			.run(context -> {
+				OracleDocumentLoaderProperties properties = context.getBean(OracleDocumentLoaderProperties.class);
+
+				assertThat(properties.getTable().getOwner()).isEqualTo("APP");
+				assertThat(properties.getTable().getTableName()).isEqualTo("DOCS");
+				assertThat(properties.getTable().getColumnName()).isEqualTo("TEXT");
 			});
 	}
 

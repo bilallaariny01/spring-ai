@@ -35,6 +35,7 @@ import java.util.stream.Collectors;
 
 import oracle.jdbc.provider.oson.OsonFactory;
 import oracle.sql.json.OracleJsonDatum;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -63,7 +64,7 @@ class OracleDocumentReaderIT {
 
 	private static final OsonFactory OSON_FACTORY = new OsonFactory();
 
-	private static final com.fasterxml.jackson.databind.ObjectMapper OSON_MAPPER = new com.fasterxml.jackson.databind.ObjectMapper();
+	private static final com.fasterxml.jackson.databind.json.JsonMapper OSON_MAPPER = new com.fasterxml.jackson.databind.json.JsonMapper();
 
 	/**
 	 * Verify a single file can be loaded into one document.
@@ -315,10 +316,7 @@ class OracleDocumentReaderIT {
 			Assumptions.assumeTrue(isUtlToTextInvokable(connection), "DBMS_VECTOR_CHAIN.UTL_TO_TEXT is not available.");
 		}
 		catch (SQLException ex) {
-			Assumptions.assumeTrue(false, "Could not verify UTL_TO_TEXT availability: " + ex.getMessage());
-		}
-		catch (RuntimeException ex) {
-			Assumptions.assumeTrue(false, "Skipping IT: Docker/Oracle container unavailable - " + ex.getMessage());
+			Assertions.fail("Could not verify UTL_TO_TEXT availability.", ex);
 		}
 	}
 

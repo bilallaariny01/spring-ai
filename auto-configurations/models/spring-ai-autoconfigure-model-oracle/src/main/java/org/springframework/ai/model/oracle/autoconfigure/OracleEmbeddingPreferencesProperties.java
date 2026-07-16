@@ -27,18 +27,25 @@ import org.springframework.util.StringUtils;
  */
 public class OracleEmbeddingPreferencesProperties {
 
+	/** Embedding service provider Oracle invokes. */
 	private @Nullable String provider;
 
+	/** Provider-specific embedding model to use. */
 	private @Nullable String model;
 
+	/** Name of the Oracle credential used to authenticate with the provider. */
 	private @Nullable String credentialName;
 
+	/** Provider endpoint URL, when the selected provider requires one. */
 	private @Nullable String url;
 
+	/** Maximum time Oracle waits for the provider transfer to complete. */
 	private @Nullable Integer transferTimeout;
 
+	/** Maximum number of input texts sent to the provider in one request. */
 	private @Nullable Integer maxCount;
 
+	/** Number of input texts Oracle groups into each embedding batch. */
 	private @Nullable Integer batchSize;
 
 	public @Nullable String getProvider() {

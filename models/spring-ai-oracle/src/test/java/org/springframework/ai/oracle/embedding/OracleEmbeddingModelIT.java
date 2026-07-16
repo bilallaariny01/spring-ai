@@ -28,7 +28,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import oracle.jdbc.OracleConnection;
 import oracle.jdbc.OracleTypes;
 import org.junit.jupiter.api.Assertions;
@@ -74,7 +74,7 @@ class OracleEmbeddingModelIT {
 		.model(ONNX_MODEL_NAME)
 		.build();
 
-	private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+	private static final JsonMapper OBJECT_MAPPER = new JsonMapper();
 
 	private static volatile boolean onnxModelPrepared;
 

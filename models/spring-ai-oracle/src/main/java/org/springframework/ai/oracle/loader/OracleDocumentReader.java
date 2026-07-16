@@ -17,6 +17,7 @@
 package org.springframework.ai.oracle.loader;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.InvalidParameterException;
@@ -29,6 +30,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -38,6 +40,7 @@ import oracle.jdbc.OracleType;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.ai.document.Document;
 import org.springframework.ai.document.DocumentReader;
@@ -81,15 +84,15 @@ public class OracleDocumentReader implements DocumentReader {
 
 	private final DataSource dataSource;
 
-	private final Resource resource;
+	private final @Nullable Resource resource;
 
-	private final String owner;
+	private final @Nullable String owner;
 
-	private final String tableName;
+	private final @Nullable String tableName;
 
-	private final String columnName;
+	private final @Nullable String columnName;
 
-	private final byte[] PreferencesOson;
+	private final byte @Nullable [] PreferencesOson;
 
 	/**
 	 * Create a reader for a local resource URL.
@@ -125,7 +128,7 @@ public class OracleDocumentReader implements DocumentReader {
 	 * @param resource source resource
 	 * @param PreferencesOson Oracle JSON preferences bytes
 	 */
-	private OracleDocumentReader(DataSource dataSource, Resource resource, byte[] PreferencesOson) {
+	private OracleDocumentReader(DataSource dataSource, Resource resource, byte @Nullable [] PreferencesOson) {
 		Assert.notNull(dataSource, "dataSource must not be null");
 		Assert.notNull(resource, "resource must not be null");
 		this.dataSource = dataSource;
@@ -157,7 +160,7 @@ public class OracleDocumentReader implements DocumentReader {
 	 * @param PreferencesOson Oracle JSON preferences bytes
 	 */
 	private OracleDocumentReader(DataSource dataSource, String owner, String tableName, String columnName,
-			byte[] PreferencesOson) {
+			byte @Nullable [] PreferencesOson) {
 		Assert.notNull(dataSource, "dataSource must not be null");
 		Assert.hasText(owner, "owner must not be empty");
 		Assert.hasText(tableName, "tableName must not be empty");
@@ -230,14 +233,18 @@ public class OracleDocumentReader implements DocumentReader {
 	@Override
 	public List<Document> get() {
 		try {
-			if (this.resource != null) {
-				return loadDocumentsFromResource();
+			Resource configuredResource = this.resource;
+			if (configuredResource != null) {
+				return loadDocumentsFromResource(configuredResource);
 			}
-			if (this.dataSource == null) {
-				throw new IllegalStateException("dataSource is required for table-based loading");
+			String configuredOwner = this.owner;
+			String configuredTableName = this.tableName;
+			String configuredColumnName = this.columnName;
+			if (configuredOwner == null || configuredTableName == null || configuredColumnName == null) {
+				throw new IllegalStateException("table source is required for table-based loading");
 			}
 			try (Connection connection = this.dataSource.getConnection()) {
-				return loadDocumentsFromTable(connection, this.owner, this.tableName, this.columnName);
+				return loadDocumentsFromTable(connection, configuredOwner, configuredTableName, configuredColumnName);
 			}
 		}
 		catch (SQLException | IOException ex) {
@@ -257,18 +264,25 @@ public class OracleDocumentReader implements DocumentReader {
 	 * @throws IOException if file access fails
 	 * @throws SQLException if Oracle text conversion fails
 	 */
-	private List<Document> loadDocumentsFromResource() throws IOException, SQLException {
-		Path path = this.resource.getFile().toPath().toAbsolutePath().normalize();
-		if (this.dataSource == null) {
-			throw new IllegalStateException("dataSource is required for resource-based loading");
+	private List<Document> loadDocumentsFromResource(Resource resource) throws IOException, SQLException {
+		if (resource.isFile()) {
+			Path path = resource.getFile().toPath().toAbsolutePath().normalize();
+			if (Files.isDirectory(path)) {
+				return loadDocumentsFromDirectory(path);
+			}
+			try (Connection connection = this.dataSource.getConnection()) {
+				Document document = loadDocument(connection, path, this.PreferencesOson);
+				return (document != null) ? List.of(document) : List.of();
+			}
 		}
 
-		if (Files.isDirectory(path)) {
-			return loadDocumentsFromDirectory(path);
+		byte[] bytes;
+		try (InputStream inputStream = resource.getInputStream()) {
+			bytes = inputStream.readAllBytes();
 		}
-
 		try (Connection connection = this.dataSource.getConnection()) {
-			Document document = loadDocument(connection, path, this.PreferencesOson);
+			Document document = loadDocument(connection, bytes, resource.getFilename(), null, resourceSource(resource),
+					this.PreferencesOson);
 			return (document != null) ? List.of(document) : List.of();
 		}
 	}
@@ -282,9 +296,6 @@ public class OracleDocumentReader implements DocumentReader {
 	 */
 	private List<Document> loadDocumentsFromDirectory(Path root) throws IOException, SQLException {
 		List<Document> documents = new ArrayList<>();
-		if (this.dataSource == null) {
-			throw new IllegalStateException("dataSource is required for directory-based loading");
-		}
 		try (Connection connection = this.dataSource.getConnection(); Stream<Path> paths = Files.walk(root)) {
 			paths.filter(Files::isRegularFile).forEach(path -> {
 				try {
@@ -310,10 +321,28 @@ public class OracleDocumentReader implements DocumentReader {
 	 * @throws IOException if file reading fails
 	 * @throws SQLException if Oracle text conversion fails
 	 */
-	private Document loadDocument(Connection connection, Path path, byte[] PreferencesOson)
+	private @Nullable Document loadDocument(Connection connection, Path path, byte @Nullable [] PreferencesOson)
 			throws IOException, SQLException {
+		Path fileName = path.getFileName();
+		Path parent = path.getParent();
+		return loadDocument(connection, Files.readAllBytes(path), (fileName != null) ? fileName.toString() : null,
+				(parent != null) ? parent.toString() : null, path.toString(), PreferencesOson);
+	}
+
+	/**
+	 * Convert resource bytes into a Spring AI document using Oracle text extraction.
+	 * @param connection active JDBC connection
+	 * @param bytes resource content
+	 * @param fileName source file name, if available
+	 * @param directoryPath absolute source directory path, if available
+	 * @param source source description or URI
+	 * @param PreferencesOson optional Oracle JSON preferences
+	 * @return created document or {@code null} if no row is returned
+	 * @throws SQLException if Oracle text conversion fails
+	 */
+	private @Nullable Document loadDocument(Connection connection, byte[] bytes, @Nullable String fileName,
+			@Nullable String directoryPath, String source, byte @Nullable [] PreferencesOson) throws SQLException {
 		Document document = null;
-		byte[] bytes = Files.readAllBytes(path);
 		try (PreparedStatement statement = connection
 			.prepareStatement("select dbms_vector_chain.utl_to_text(?, ?) text, "
 					+ "dbms_vector_chain.utl_to_text(?, json('{\"plaintext\":\"false\"}')) metadata from dual")) {
@@ -329,15 +358,13 @@ public class OracleDocumentReader implements DocumentReader {
 						String text = resultSet.getString(COLUMN_TEXT);
 						String html = resultSet.getString(COLUMN_METADATA);
 						Map<String, Object> metadata = getMetadata(html);
-						Path fileName = path.getFileName();
-						Path parent = path.getParent();
 						if (fileName != null) {
-							metadata.put(FILE_NAME_METADATA, fileName.toString());
+							metadata.put(FILE_NAME_METADATA, fileName);
 						}
-						if (parent != null) {
-							metadata.put(ABSOLUTE_DIRECTORY_PATH_METADATA, parent.toString());
+						if (directoryPath != null) {
+							metadata.put(ABSOLUTE_DIRECTORY_PATH_METADATA, directoryPath);
 						}
-						metadata.put(METADATA_SOURCE, path.toString());
+						metadata.put(METADATA_SOURCE, source);
 						document = new Document(text, metadata);
 					}
 				}
@@ -347,6 +374,20 @@ public class OracleDocumentReader implements DocumentReader {
 			}
 		}
 		return document;
+	}
+
+	/**
+	 * Resolve a stable metadata value for a stream-backed resource.
+	 * @param resource source resource
+	 * @return resource URI when available, otherwise its description
+	 */
+	private static String resourceSource(Resource resource) {
+		try {
+			return resource.getURI().toString();
+		}
+		catch (IOException ex) {
+			return resource.getDescription();
+		}
 	}
 
 	/**
@@ -419,15 +460,15 @@ public class OracleDocumentReader implements DocumentReader {
 
 	public static final class Builder {
 
-		private DataSource dataSource;
+		private @Nullable DataSource dataSource;
 
-		private Resource resource;
+		private @Nullable Resource resource;
 
-		private String owner;
+		private @Nullable String owner;
 
-		private String tableName;
+		private @Nullable String tableName;
 
-		private String columnName;
+		private @Nullable String columnName;
 
 		private final OracleDocumentPreferences.Builder preferencesBuilder = OracleDocumentPreferences.builder();
 
@@ -497,16 +538,22 @@ public class OracleDocumentReader implements DocumentReader {
 		 */
 		public OracleDocumentReader build() {
 			Assert.notNull(this.dataSource, "dataSource must not be null");
+			DataSource configuredDataSource = Objects.requireNonNull(this.dataSource);
 			OracleDocumentPreferences resolvedPreferences = this.preferencesBuilder.build();
-			byte[] preferencesOson = resolvedPreferences.isEmpty() ? null : resolvedPreferences.toByteArray();
-			if (this.resource != null) {
-				return new OracleDocumentReader(this.dataSource, this.resource, preferencesOson);
+			byte @Nullable [] preferencesOson = resolvedPreferences.isEmpty() ? null
+					: resolvedPreferences.toByteArray();
+			Resource configuredResource = this.resource;
+			if (configuredResource != null) {
+				return new OracleDocumentReader(configuredDataSource, configuredResource, preferencesOson);
 			}
 			Assert.hasText(this.owner, "owner must not be empty");
 			Assert.hasText(this.tableName, "tableName must not be empty");
 			Assert.hasText(this.columnName, "columnName must not be empty");
-			return new OracleDocumentReader(this.dataSource, this.owner, this.tableName, this.columnName,
-					preferencesOson);
+			String configuredOwner = Objects.requireNonNull(this.owner);
+			String configuredTableName = Objects.requireNonNull(this.tableName);
+			String configuredColumnName = Objects.requireNonNull(this.columnName);
+			return new OracleDocumentReader(configuredDataSource, configuredOwner, configuredTableName,
+					configuredColumnName, preferencesOson);
 		}
 
 	}
