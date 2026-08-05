@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.springframework.ai.model.oracle.autoconfigure;
+package org.springframework.ai.model.oracle.autoconfigure.chunking;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;

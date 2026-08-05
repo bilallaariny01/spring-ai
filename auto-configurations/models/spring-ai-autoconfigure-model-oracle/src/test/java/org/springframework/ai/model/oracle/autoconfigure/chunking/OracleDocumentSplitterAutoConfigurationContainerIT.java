@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.springframework.ai.model.oracle.autoconfigure;
+package org.springframework.ai.model.oracle.autoconfigure.chunking;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
