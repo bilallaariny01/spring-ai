@@ -131,6 +131,7 @@
 		<module>models/spring-ai-google-genai-embedding</module>
 		<module>models/spring-ai-mistral-ai</module>
 		<module>models/spring-ai-ollama</module>
+		<module>models/spring-ai-oracle</module>
 		<module>models/spring-ai-openai</module>
 		<module>models/spring-ai-postgresml</module>
 		<module>models/spring-ai-stability-ai</module>
