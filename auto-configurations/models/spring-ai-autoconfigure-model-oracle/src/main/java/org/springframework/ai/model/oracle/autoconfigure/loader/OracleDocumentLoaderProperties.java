@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.springframework.ai.model.oracle.autoconfigure;
+package org.springframework.ai.model.oracle.autoconfigure.loader;
 
 import org.jspecify.annotations.Nullable;
 
