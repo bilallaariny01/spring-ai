@@ -13,4 +13,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-org.springframework.ai.model.oracle.autoconfigure.OracleEmbeddingAutoConfiguration
+org.springframework.ai.model.oracle.autoconfigure.embedding.OracleEmbeddingAutoConfiguration

@@ -15,6 +15,6 @@
  */
 
 @NullMarked
-package org.springframework.ai.model.oracle.autoconfigure;
+package org.springframework.ai.model.oracle.autoconfigure.embedding;
 
 import org.jspecify.annotations.NullMarked;

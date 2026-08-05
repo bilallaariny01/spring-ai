@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.springframework.ai.model.oracle.autoconfigure;
+package org.springframework.ai.model.oracle.autoconfigure.embedding;
 
 import java.sql.SQLException;
 import java.sql.SQLTransientException;
